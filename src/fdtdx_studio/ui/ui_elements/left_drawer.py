@@ -86,7 +86,7 @@ class LeftDrawer:
             with ui.row().classes("w-full items-center justify-between"):
                 ui.label("PML-Thickness:").style("font-size: 15px").classes("flex-1").props("dense")
                 self.pml_thickness = ui.number(
-                    value=0, min=0, on_change=lambda e: self.controller.set_pml_thickness(e.value)
+                    value=0, min=0, on_change=lambda e: self.controller.set_pml_thickness(int(e.value))
                 ).classes("flex-1")
 
             # Expansion for Materials

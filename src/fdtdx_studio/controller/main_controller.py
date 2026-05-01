@@ -56,13 +56,17 @@ class Controller:
                 f"Adding object to model: name={name}, partial_real_shape={partial_real_shape}, partial_real_position={partial_real_position}, color={color}\n"
             )
         name = self.model.namecheck(name)  # checks if the name is unique and changes it if not
-        self.model.create_material_obj(
-            name=name,
-            partial_real_shape=partial_real_shape,
-            partial_real_position=partial_real_position,
-            color=color,
-            material=material,
-        )
+        try:    
+            self.model.create_material_obj(
+                name=name,
+                partial_real_shape=partial_real_shape,
+                partial_real_position=partial_real_position,
+                color=color,
+                material=material,
+            )
+        except ValueError as e:
+            ui.notify(str(e), type="negative")
+            return
         if self.view.left_drawer is not None:
             self.view.left_drawer.scrollarea_add_Object((name, typ))
         self.view.main_section.add_object((name, typ, partial_real_shape, partial_real_position, color))
@@ -409,13 +413,15 @@ class Controller:
     # UI Update to be called if backend variables are changed
     def ui_update(self):
         """called when any relevant variable is updated, updates entire ui accordingly, saves projects to browser localstorage"""
+        ui_objects = []
         try:
             ui_objects = self.ui_parse_objectlist_scrollarea()
             self.view.main_section.update(ui_objects)
+            ui.timer(0, lambda: self.project.localproject_save(), once=True)
         except Exception as e:
             self.view.send_error(f"Conflicting constraints for {e!s}")
             # should still update left draw with name changes etc cause it does still get saved
-            ui_objects = []
+            
             for i in self.model.get_track_object_list():
                 if i is None:
                     continue
@@ -423,7 +429,6 @@ class Controller:
                     ui_objects.append((i.partial_grid_shape[0], i.__class__.__name__))
                 else:
                     ui_objects.append((i.name, i.__class__.__name__, i.color))
-            self.view.main_section.update(ui_objects[:1])
         if self.view.left_drawer is not None:
             self.view.left_drawer.update(ui_objects[1:])
 
@@ -432,7 +437,7 @@ class Controller:
         # If its called from a popup or a panel which is deleting itself it throws an error because the parent vanishes
         # while ui_update is running, breaking it.
 
-        ui.timer(0, lambda: self.project.localproject_save(), once=True)
+
 
     def save_constraints(self, object_name, cons):
         # delete removed constraints

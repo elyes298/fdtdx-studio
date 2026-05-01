@@ -572,6 +572,8 @@ class Model(Constraints):
         """This Function just hides that partial_real_position isnt used when resolving Constraints"""
         key = next((k for k, v in self.constraints.items() if "hidden_" in k and v.object == obj.name), None)
         sim_vol = self.track_object_list[0]
+        if sim_vol is None:
+                raise ValueError("Simulation Volume is not set")
         x, y, z = (
             None if a is None else (2 * a / x) for a, x in zip(obj.partial_real_position, sim_vol.partial_real_shape)
         )
