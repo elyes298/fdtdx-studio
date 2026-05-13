@@ -25,6 +25,7 @@ class MainSection:
         self.controller = controller
         self.camera_distance_base = (-20, 0, 0)
         self.unit_scale = 1000000  # 1 unit = 1 micrometer
+        self.muted_color = "#cccccc"
 
         with ui.element().classes("w-full h-[90vh] flex flex-col top-0"):
             with ui.scene(grid=False, show_stats=False, on_click=self.handle_click).style(
@@ -45,57 +46,29 @@ class MainSection:
     def _coplanar_object_names(self) -> list[str]:
         return [n for n in self.objects if n != "Simulation_Volume"]
 
-    def _apply_coplanar_depth_bias(self) -> None:
-        names = self._coplanar_object_names()
-        if not names:
-            return
-        ranked = {name: i + 1 for i, name in enumerate(names)}
-        payload = json.dumps(ranked)
-        scene_id = int(self.scene.id)
-        ui.run_javascript(
-            f"""
-            const el = getElement({scene_id});
-            const vue = el && el.$root && el.$root.$refs && el.$root.$refs['r{scene_id}'];
-            if (!vue || !vue.scene) return;
-            const rankByName = {payload};
-            vue.scene.traverse((obj) => {{
-                if (!obj.isMesh || !obj.material || !obj.name) return;
-                const rank = rankByName[obj.name];
-                if (!rank) return;
-                const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
-                for (const mat of mats) {{
-                    if (!mat || mat.isLineBasicMaterial) continue;
-                    mat.polygonOffset = true;
-                    mat.polygonOffsetFactor = rank;
-                    mat.polygonOffsetUnits = rank;
-                    mat.needsUpdate = true;
-                }}
-            }});
-            """
-        )
 
     def add_object(self, obj, *, refresh_depth_bias: bool = True):
         name = obj[0]
-
+        rank = len([n for n in self.objects if n != "Simulation_Volume"])
+        eps = 0.01 * rank
         with self.scene:
-            if isinstance(obj[4], tuple):
-                self.colors[name] = rgb_to_hex(obj[4])
-                box = (
-                    ui.scene.box(obj[2][0] * self.unit_scale, obj[2][1] * self.unit_scale, obj[2][2] * self.unit_scale)
-                    .move(obj[3][0] * self.unit_scale, obj[3][1] * self.unit_scale, obj[3][2] * self.unit_scale)
-                    .material(self.colors[name])
+            color = rgb_to_hex(obj[4]) if isinstance(obj[4], tuple) else obj[4]
+            self.colors[name] = color
+            box = (
+                ui.scene.box(
+                    (obj[2][0] * self.unit_scale) - eps,
+                    (obj[2][1] * self.unit_scale) - eps,
+                    (obj[2][2] * self.unit_scale) - eps,
                 )
-            else:
-                self.colors[name] = obj[4]
-                box = (
-                    ui.scene.box(obj[2][0] * self.unit_scale, obj[2][1] * self.unit_scale, obj[2][2] * self.unit_scale)
-                    .move(obj[3][0] * self.unit_scale, obj[3][1] * self.unit_scale, obj[3][2] * self.unit_scale)
-                    .material(self.colors[name])
+                .move(
+                    obj[3][0] * self.unit_scale,
+                    obj[3][1] * self.unit_scale,
+                    obj[3][2] * self.unit_scale,
                 )
+                .material(color)
+            )
 
         self.objects[name] = box.with_name(name)
-        if refresh_depth_bias:
-            self._apply_coplanar_depth_bias()
 
     # clear the entire 3d scene and then add all objects in der objectlist
     def update(self, objects):
@@ -105,12 +78,10 @@ class MainSection:
         for obj in objects[1:]:  # remove [1:] if simulation volume should also be drawn
             if obj[1] != "PerfectlyMatchedLayer":
                 self.add_object(obj, refresh_depth_bias=False)
-        self._apply_coplanar_depth_bias()
 
     def delete_object(self, name):
         self.objects[name].delete()
         result = self.objects.pop(name)
-        self._apply_coplanar_depth_bias()
         return result
 
     def change_color(self, name, color):
@@ -125,25 +96,26 @@ class MainSection:
     def scale_scene_object(self, name, x, y, z):
         if self.objects is not None:
             self.objects[name].scale(x * self.unit_scale, y * self.unit_scale, z * self.unit_scale)
-            self._apply_coplanar_depth_bias()
+
 
     # TODO: depricate?
     def move_scene_object(self, name, x, y, z):
         self.objects[name].move(x * self.unit_scale, y * self.unit_scale, z * self.unit_scale)
-        self._apply_coplanar_depth_bias()
+
 
     def highlight(self, name):
         self.downplay()
         for n, obj in self.objects.items():
             if n not in [name, "Simulation_Volume"]:
-                obj.material(self.colors[n], opacity=0.4)
-        self._apply_coplanar_depth_bias()
+                obj.material(self.muted_color, opacity=0.4)
+        
+
 
     def downplay(self):
         for key, value in self.objects.items():
             if value != self.objects["Simulation_Volume"]:
-                value.material(self.colors[key], opacity=1)
-        self._apply_coplanar_depth_bias()
+                value.material(self.colors[key], opacity=1.0)
+
 
     def add_simulation_volume(self, volume, *, refresh_depth_bias: bool = True):
         volume_units = (volume[2][0] * self.unit_scale, volume[2][1] * self.unit_scale, volume[2][2] * self.unit_scale)
@@ -158,8 +130,7 @@ class MainSection:
         self.camera_distance_base = (-max_dim * 1.5, 0, 0)
         self.center_view()
         self.objects["Simulation_Volume"] = box
-        if refresh_depth_bias:
-            self._apply_coplanar_depth_bias()
+
 
     def handle_click(self, e: events.SceneClickEventArguments):
         name = next((hit.object_name for hit in e.hits if hit.object_name), None)
